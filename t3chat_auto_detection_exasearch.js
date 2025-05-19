@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         t3.chat Exa Search
 // @namespace    http://tampermonkey.net/
-// @version      0.5.3 // Incrementing version for consolidated changes
-// @description  Calls Exa API on t3.chat based on AI decision and provides configurable search parameters.
+// @version      0.6.0 // Incrementing version for slider UI
+// @description  Calls Exa API on t3.chat based on AI decision and provides configurable search parameters with slider UI.
 // @match        https://t3.chat/*
 // @match        https://beta.t3.chat/*
 // @match        https://beta.t3.chat/chat/*
@@ -18,10 +18,10 @@
 (async function() {
     'use strict';
 
-    console.log('[T3CHAT-EXA-SCRIPT] IIFE execution started (v0.5.3).');
+    console.log('[T3CHAT-EXA-SCRIPT] IIFE execution started (v0.6.0).');
 
     const SCRIPT_NAME = "t3.chat Inject Search Toggle (with Exa API)";
-    const SCRIPT_VERSION = "0.5.3";
+    const SCRIPT_VERSION = "0.6.0";
     let debugMode = true; // Default, will be overwritten by GM_getValue in main
 
     const Logger = {
@@ -63,12 +63,33 @@
         apiKeyShowCheckbox: 'exa-key-show',
         apiKeyShowLabelContainer: 'exa-key-show-label-container',
         apiKeySaveButton: 'exa-key-save',
-        searchToggle: 'search-toggle'
+        searchToggle: 'search-toggle',
+        // New IDs for Exa Settings Modal
+        exaSettingsModal: 'exa-settings-modal',
+        exaSettingsModalContent: 'exa-settings-modal-content',
+        exaSettingsModalHeader: 'exa-settings-modal-header',
+        exaSettingsModalDescription: 'exa-settings-modal-description',
+        exaSettingsSaveButton: 'exa-settings-save',
+        exaSettingsCloseButton: 'exa-settings-close',
+        numResultsSlider: 'exa-num-results-slider',
+        numResultsValue: 'exa-num-results-value',
+        subpagesSlider: 'exa-subpages-slider',
+        subpagesValue: 'exa-subpages-value',
+        linksSlider: 'exa-links-slider',
+        linksValue: 'exa-links-value',
+        imageLinksSlider: 'exa-image-links-slider',
+        imageLinksValue: 'exa-image-links-value'
     };
     const CSS_CLASSES = {
         button: "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 disabled:cursor-not-allowed hover:bg-muted/40 hover:text-foreground disabled:hover:bg-transparent disabled:hover:text-foreground/50 px-3 text-xs -mb-1.5 h-auto gap-2 rounded-full border border-solid border-secondary-foreground/10 py-1.5 pl-2 pr-2.5 text-muted-foreground",
         searchToggleLoading: 'loading',
-        searchToggleOn: 'on'
+        searchToggleOn: 'on',
+        // New CSS classes for sliders
+        sliderContainer: 'exa-slider-container',
+        sliderLabel: 'exa-slider-label',
+        sliderInput: 'exa-slider-input',
+        sliderValueDisplay: 'exa-slider-value-display',
+        modalButtonContainer: 'exa-modal-button-container'
     };
 
     let exaApiKey = null;
@@ -87,9 +108,9 @@
     }
     const LaTeXProcessor = {
         map: [
-            { pattern: /(\d+)(?:\\,)?(?:\^)?\circ\mathrm{C}/g, replacement: '$1°C' },
-            { pattern: /(\d+)(?:\\,)?(?:\^)?\circ\mathrm{F}/g, replacement: '$1°F' },
-            { pattern: /(\d+)(?:\\,)?(?:\^)?\circ/g, replacement: '$1°' },
+            { pattern: /(\d+)(?:\,)?(?:\^)?\circ\mathrm{C}/g, replacement: '$1°C' },
+            { pattern: /(\d+)(?:\,)?(?:\^)?\circ\mathrm{F}/g, replacement: '$1°F' },
+            { pattern: /(\d+)(?:\,)?(?:\^)?\circ/g, replacement: '$1°' },
             { pattern: /\times/g, replacement: '×' },
             { pattern: /\div/g, replacement: '÷' },
             { pattern: /\pm/g, replacement: '±' },
@@ -130,6 +151,8 @@
               #${UI_IDS.searchToggle}.${CSS_CLASSES.searchToggleOn}::before { transform: scaleX(1); }
               #${UI_IDS.searchToggle} svg { transition: transform 0.3s ease; }
               #${UI_IDS.searchToggle}.${CSS_CLASSES.searchToggleOn} svg { transform: rotate(360deg); }
+
+              /* API Key Modal Styles (unchanged) */
               #${UI_IDS.apiKeyModal} { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 9999; }
               #${UI_IDS.apiKeyModalContent} { background: #1c1c1e; padding: 24px; border-radius: 12px; width: 360px; box-sizing: border-box; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
               #${UI_IDS.apiKeyModalHeader} { display: flex; align-items: center; margin-bottom: 20px; }
@@ -142,9 +165,27 @@
               #${UI_IDS.apiKeyShowLabelContainer} label { font-size: 14px; }
               #${UI_IDS.apiKeySaveButton} { width: 100%; padding: 12px; background: #a02553; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 15px; font-weight: 500; transition: all 0.2s ease; }
               #${UI_IDS.apiKeySaveButton}:hover { background: #c62a88; }
+
+              /* Exa Settings Modal Styles */
+              #${UI_IDS.exaSettingsModal} { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000; }
+              #${UI_IDS.exaSettingsModalContent} { background: #1c1c1e; padding: 24px; border-radius: 12px; width: 420px; box-sizing: border-box; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+              #${UI_IDS.exaSettingsModalHeader} { display: flex; align-items: center; margin-bottom: 10px; } /* Reduced bottom margin */
+              #${UI_IDS.exaSettingsModalHeader} > div:first-child { color: #401829; margin-right: 12px; }
+              #${UI_IDS.exaSettingsModalHeader} > div:last-child { font-size: 22px; font-weight: 600; color: #fff; }
+              #${UI_IDS.exaSettingsModalDescription} { color: #999; font-size: 14px; margin-bottom: 20px; }
+              .${CSS_CLASSES.sliderContainer} { margin-bottom: 18px; }
+              .${CSS_CLASSES.sliderLabel} { display: block; color: #ccc; font-size: 14px; margin-bottom: 8px; }
+              .${CSS_CLASSES.sliderInput} { width: 100%; accent-color: #401829; cursor: pointer; }
+              .${CSS_CLASSES.sliderValueDisplay} { color: #fff; font-size: 13px; text-align: right; margin-top: 4px; }
+              .${CSS_CLASSES.modalButtonContainer} { display: flex; justify-content: space-between; margin-top: 24px; }
+              #${UI_IDS.exaSettingsSaveButton}, #${UI_IDS.exaSettingsCloseButton} { padding: 10px 18px; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s ease; }
+              #${UI_IDS.exaSettingsSaveButton} { background: #401829; }
+              #${UI_IDS.exaSettingsSaveButton}:hover { background: #401829; }
+              #${UI_IDS.exaSettingsCloseButton} { background: #555; }
+              #${UI_IDS.exaSettingsCloseButton}:hover { background: #777; }
             `;
             document.head.appendChild(styleEl);
-            Logger.log("Global styles injected.");
+            Logger.log("Global styles injected (including Exa Settings Modal).");
         }
     };
 
@@ -190,13 +231,121 @@
                     Logger.log("API Key saved.");
                     modalElement.remove();
                     ApiKeyModal._isShown = false;
-                    location.reload();
+                    location.reload(); // Reload to ensure API key is used immediately by subsequent operations if any
                 } else {
                     alert('API Key cannot be empty');
                 }
             });
         }
     };
+
+    const ExaSettingsModal = {
+        _isShown: false,
+        _currentSettings: {},
+        show: async () => {
+            if (document.getElementById(UI_IDS.exaSettingsModal) || ExaSettingsModal._isShown) return;
+            ExaSettingsModal._isShown = true;
+
+            ExaSettingsModal._currentSettings = {
+                numResults: await GM_getValue(GM_STORAGE_KEYS.EXA_NUM_RESULTS, DEFAULT_EXA_NUM_RESULTS),
+                subpages: await GM_getValue(GM_STORAGE_KEYS.EXA_SUBPAGES, DEFAULT_EXA_SUBPAGES),
+                links: await GM_getValue(GM_STORAGE_KEYS.EXA_LINKS, DEFAULT_EXA_LINKS),
+                imageLinks: await GM_getValue(GM_STORAGE_KEYS.EXA_IMAGE_LINKS, DEFAULT_EXA_IMAGE_LINKS)
+            };
+
+            const wrapper = document.createElement('div');
+            wrapper.id = UI_IDS.exaSettingsModal;
+            wrapper.innerHTML = `
+              <div id="${UI_IDS.exaSettingsModalContent}">
+                <div id="${UI_IDS.exaSettingsModalHeader}">
+                  <div>Configure Exa Search</div>
+                </div>
+                <div id="${UI_IDS.exaSettingsModalDescription}">Adjust the parameters for Exa search requests.</div>
+
+                <div class="${CSS_CLASSES.sliderContainer}">
+                  <label for="${UI_IDS.numResultsSlider}" class="${CSS_CLASSES.sliderLabel}">Search Results Count (0-20):</label>
+                  <input type="range" id="${UI_IDS.numResultsSlider}" class="${CSS_CLASSES.sliderInput}" min="0" max="20" value="${ExaSettingsModal._currentSettings.numResults}">
+                  <div id="${UI_IDS.numResultsValue}" class="${CSS_CLASSES.sliderValueDisplay}">${ExaSettingsModal._currentSettings.numResults}</div>
+                </div>
+
+                <div class="${CSS_CLASSES.sliderContainer}">
+                  <label for="${UI_IDS.subpagesSlider}" class="${CSS_CLASSES.sliderLabel}">Subpages Count (0-10):</label>
+                  <input type="range" id="${UI_IDS.subpagesSlider}" class="${CSS_CLASSES.sliderInput}" min="0" max="10" value="${ExaSettingsModal._currentSettings.subpages}">
+                  <div id="${UI_IDS.subpagesValue}" class="${CSS_CLASSES.sliderValueDisplay}">${ExaSettingsModal._currentSettings.subpages}</div>
+                </div>
+
+                <div class="${CSS_CLASSES.sliderContainer}">
+                  <label for="${UI_IDS.linksSlider}" class="${CSS_CLASSES.sliderLabel}">Links Count (0-10):</label>
+                  <input type="range" id="${UI_IDS.linksSlider}" class="${CSS_CLASSES.sliderInput}" min="0" max="10" value="${ExaSettingsModal._currentSettings.links}">
+                  <div id="${UI_IDS.linksValue}" class="${CSS_CLASSES.sliderValueDisplay}">${ExaSettingsModal._currentSettings.links}</div>
+                </div>
+
+                <div class="${CSS_CLASSES.sliderContainer}">
+                  <label for="${UI_IDS.imageLinksSlider}" class="${CSS_CLASSES.sliderLabel}">Image Links Count (0-10):</label>
+                  <input type="range" id="${UI_IDS.imageLinksSlider}" class="${CSS_CLASSES.sliderInput}" min="0" max="10" value="${ExaSettingsModal._currentSettings.imageLinks}">
+                  <div id="${UI_IDS.imageLinksValue}" class="${CSS_CLASSES.sliderValueDisplay}">${ExaSettingsModal._currentSettings.imageLinks}</div>
+                </div>
+
+                <div class="${CSS_CLASSES.modalButtonContainer}">
+                  <button id="${UI_IDS.exaSettingsCloseButton}">Close</button>
+                  <button id="${UI_IDS.exaSettingsSaveButton}">Save & Reload</button>
+                </div>
+              </div>`;
+            document.body.appendChild(wrapper);
+            ExaSettingsModal._attachEventListeners(wrapper);
+            Logger.log("Exa Settings modal shown.");
+        },
+        _attachEventListeners: (modalElement) => {
+            const numResultsSlider = modalElement.querySelector(`#${UI_IDS.numResultsSlider}`);
+            const numResultsValue = modalElement.querySelector(`#${UI_IDS.numResultsValue}`);
+            const subpagesSlider = modalElement.querySelector(`#${UI_IDS.subpagesSlider}`);
+            const subpagesValue = modalElement.querySelector(`#${UI_IDS.subpagesValue}`);
+            const linksSlider = modalElement.querySelector(`#${UI_IDS.linksSlider}`);
+            const linksValue = modalElement.querySelector(`#${UI_IDS.linksValue}`);
+            const imageLinksSlider = modalElement.querySelector(`#${UI_IDS.imageLinksSlider}`);
+            const imageLinksValue = modalElement.querySelector(`#${UI_IDS.imageLinksValue}`);
+
+            const saveButton = modalElement.querySelector(`#${UI_IDS.exaSettingsSaveButton}`);
+            const closeButton = modalElement.querySelector(`#${UI_IDS.exaSettingsCloseButton}`);
+
+            const updateSliderValue = (slider, display) => display.textContent = slider.value;
+
+            numResultsSlider.addEventListener('input', () => updateSliderValue(numResultsSlider, numResultsValue));
+            subpagesSlider.addEventListener('input', () => updateSliderValue(subpagesSlider, subpagesValue));
+            linksSlider.addEventListener('input', () => updateSliderValue(linksSlider, linksValue));
+            imageLinksSlider.addEventListener('input', () => updateSliderValue(imageLinksSlider, imageLinksValue));
+
+            saveButton.addEventListener('click', async () => {
+                const newNumResults = parseInt(numResultsSlider.value, 10);
+                const newSubpages = parseInt(subpagesSlider.value, 10);
+                const newLinks = parseInt(linksSlider.value, 10);
+                const newImageLinks = parseInt(imageLinksSlider.value, 10);
+
+                await GM_setValue(GM_STORAGE_KEYS.EXA_NUM_RESULTS, newNumResults);
+                await GM_setValue(GM_STORAGE_KEYS.EXA_SUBPAGES, newSubpages);
+                await GM_setValue(GM_STORAGE_KEYS.EXA_LINKS, newLinks);
+                await GM_setValue(GM_STORAGE_KEYS.EXA_IMAGE_LINKS, newImageLinks);
+
+                // Update live variables
+                exaNumResults = newNumResults;
+                exaSubpages = newSubpages;
+                exaLinks = newLinks;
+                exaImageLinks = newImageLinks;
+
+                Logger.log("Exa settings saved:", { newNumResults, newSubpages, newLinks, newImageLinks });
+                modalElement.remove();
+                ExaSettingsModal._isShown = false;
+                location.reload();
+            });
+
+            closeButton.addEventListener('click', () => {
+                modalElement.remove();
+                ExaSettingsModal._isShown = false;
+                Logger.log("Exa Settings modal closed without saving.");
+            });
+        }
+    };
+
 
     const ExaAPI = {
         call: async (prompt) => {
@@ -212,13 +361,13 @@
             const requestBody = {
                 query: prompt,
                 type: "auto",
-                numResults: exaNumResults,
+                numResults: exaNumResults, // Uses live updated variable
                 contents: {
                     text: { includeHtmlTags: false },
                     livecrawl: "always",
                     summary: {},
-                    subpages: exaSubpages,
-                    extras: { links: exaLinks, imageLinks: exaImageLinks }
+                    subpages: exaSubpages, // Uses live updated variable
+                    extras: { links: exaLinks, imageLinks: exaImageLinks } // Uses live updated variables
                 }
             };
             Logger.log("Calling Exa API (/search) with prompt:", prompt, "Request body:", requestBody);
@@ -414,7 +563,13 @@
             if (ResponseObserver.observer) { Logger.log("[ResponseObserver.init] Disconnecting existing observer."); ResponseObserver.observer.disconnect(); }
 
             ResponseObserver._debouncedProcessAiResponse = debounce((pElement) => {
-                if (!pElement || typeof unsafeWindow === 'undefined' || !unsafeWindow.t3ChatSearch || unsafeWindow.t3ChatSearch.searchWorkflowState !== WORKFLOW_STATE.AWAITING_DECISION) {
+                if (typeof unsafeWindow === 'undefined' || !unsafeWindow.t3ChatSearch || !unsafeWindow.t3ChatSearch.needSearch) {
+                    // If search is off, or unsafeWindow not ready, do nothing.
+                    return;
+                }
+                // At this point, unsafeWindow.t3ChatSearch.needSearch is TRUE.
+                // Now, check the specific conditions for this observer's action.
+                if (unsafeWindow.t3ChatSearch.searchWorkflowState !== WORKFLOW_STATE.AWAITING_DECISION) {
                     return;
                 }
                 const aiResponseText = pElement.textContent.trim();
@@ -469,7 +624,13 @@
             Logger.log("[ResponseObserver.init] Observer initialized with debounced AI response processing.");
         },
         handleMutations: (mutationsList) => {
-            if (typeof unsafeWindow === 'undefined' || !unsafeWindow.t3ChatSearch || unsafeWindow.t3ChatSearch.searchWorkflowState !== WORKFLOW_STATE.AWAITING_DECISION) {
+            if (typeof unsafeWindow === 'undefined' || !unsafeWindow.t3ChatSearch || !unsafeWindow.t3ChatSearch.needSearch) {
+                // If search is off, or unsafeWindow not ready, do nothing.
+                return;
+            }
+            // At this point, unsafeWindow.t3ChatSearch.needSearch is TRUE.
+            // Now, check the specific conditions for this observer's action.
+            if (unsafeWindow.t3ChatSearch.searchWorkflowState !== WORKFLOW_STATE.AWAITING_DECISION) {
                 return;
             }
 
@@ -603,6 +764,9 @@
             } return processed;
         },
         _fixMathInChatInternal: (mutations) => {
+            if (typeof unsafeWindow !== 'undefined' && unsafeWindow.t3ChatSearch && !unsafeWindow.t3ChatSearch.needSearch) {
+                return;
+            }
             let changesMadeOverall = false;
             if (!mutations || mutations.length === 0) {
                 const logContainer = document.querySelector(SELECTORS.chatLogContainer);
@@ -641,25 +805,22 @@
                 alert(`Debug mode set to: ${debugMode}. Reloading page for changes to take full effect if needed.`);
                 Logger.log(`Debug mode toggled to: ${debugMode} via menu.`);
             });
-            const createNumericConfigCommand = async (storageKey, name, defVal, liveValRef) => {
-                const currentStoredVal = await GM_getValue(storageKey, defVal);
-                GM_registerMenuCommand(`Set Exa ${name} (Current: ${currentStoredVal}, Default: ${defVal})`, async () => {
-                    const promptCurrentValue = await GM_getValue(storageKey, defVal);
-                    const newValStr = prompt(`Enter new Exa ${name} (integer, default: ${defVal}):`, promptCurrentValue);
-                    if (newValStr !== null) {
-                        const parsed = parseInt(newValStr, 10);
-                        if (!isNaN(parsed) && parsed >= 0) {
-                            await GM_setValue(storageKey, parsed);
-                            Logger.log(`Exa ${name} set to: ${parsed}. Reloading.`); location.reload();
-                        } else { alert(`Invalid input. Please enter a non-negative integer. ${name} not changed.`); }
-                    }
+
+            // Helper to create menu commands that open the settings modal
+            const createExaSettingCommand = async (label, storageKey, defaultValue) => {
+                const currentValue = await GM_getValue(storageKey, defaultValue);
+                GM_registerMenuCommand(`${label} (Current: ${currentValue}, Default: ${defaultValue})`, () => {
+                    ExaSettingsModal.show();
                 });
             };
-            await createNumericConfigCommand(GM_STORAGE_KEYS.EXA_NUM_RESULTS, "Search Results Count", DEFAULT_EXA_NUM_RESULTS, exaNumResults);
-            await createNumericConfigCommand(GM_STORAGE_KEYS.EXA_SUBPAGES, "Subpages Count", DEFAULT_EXA_SUBPAGES, exaSubpages);
-            await createNumericConfigCommand(GM_STORAGE_KEYS.EXA_LINKS, "Links Count", DEFAULT_EXA_LINKS, exaLinks);
-            await createNumericConfigCommand(GM_STORAGE_KEYS.EXA_IMAGE_LINKS, "Image Links Count", DEFAULT_EXA_IMAGE_LINKS, exaImageLinks);
-            Logger.log("Menu commands registered.");
+
+            // Re-register menu commands to use the new ExaSettingsModal
+            await createExaSettingCommand('Set Exa Search Results Count', GM_STORAGE_KEYS.EXA_NUM_RESULTS, DEFAULT_EXA_NUM_RESULTS);
+            await createExaSettingCommand('Set Exa Subpages Count', GM_STORAGE_KEYS.EXA_SUBPAGES, DEFAULT_EXA_SUBPAGES);
+            await createExaSettingCommand('Set Exa Links Count', GM_STORAGE_KEYS.EXA_LINKS, DEFAULT_EXA_LINKS);
+            await createExaSettingCommand('Set Exa Image Links Count', GM_STORAGE_KEYS.EXA_IMAGE_LINKS, DEFAULT_EXA_IMAGE_LINKS);
+
+            Logger.log("Menu commands registered to use slider modal.");
         }
     };
 
@@ -684,7 +845,7 @@
         SELECTORS = {
             justifyDiv: 'div.mt-2.flex-row-reverse.justify-between',
             modelTempSection: 'div.flex.flex-col',
-            mlGroup: `div.${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape('ml-[-7px]') : 'ml-\\[-7px\\]'}`,
+            mlGroup: `div.${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape('ml-[-7px]') : 'ml-\\[-7px\\]'}`, // Escaped for template literal
             chatLogContainer: 'div[role="log"][aria-label="Chat messages"]',
             mainContentArea: 'main',
             chatArea: '.chat', // Generic fallback, prefer chatLogContainer
@@ -700,18 +861,35 @@
         console.log('[T3CHAT-EXA-SCRIPT] SELECTORS defined.');
 
         try {
-            debugMode = await GM_getValue(GM_STORAGE_KEYS.DEBUG, true);
-            Logger.log(`[MAIN-TRY] ${SCRIPT_NAME} v${SCRIPT_VERSION} starting. Debug mode (from GM): ${debugMode}`);
+            // Load settings concurrently
+            const [
+                debugModeVal,
+                apiKeyVal,
+                numResultsVal,
+                subpagesVal,
+                linksVal,
+                imageLinksVal
+            ] = await Promise.all([
+                GM_getValue(GM_STORAGE_KEYS.DEBUG, true),
+                GM_getValue(GM_STORAGE_KEYS.EXA_API_KEY), // No default, handles undefined
+                GM_getValue(GM_STORAGE_KEYS.EXA_NUM_RESULTS, DEFAULT_EXA_NUM_RESULTS),
+                GM_getValue(GM_STORAGE_KEYS.EXA_SUBPAGES, DEFAULT_EXA_SUBPAGES),
+                GM_getValue(GM_STORAGE_KEYS.EXA_LINKS, DEFAULT_EXA_LINKS),
+                GM_getValue(GM_STORAGE_KEYS.EXA_IMAGE_LINKS, DEFAULT_EXA_IMAGE_LINKS)
+            ]);
 
-            exaApiKey = await GM_getValue(GM_STORAGE_KEYS.EXA_API_KEY);
+            debugMode = debugModeVal;
+            exaApiKey = apiKeyVal;
+            exaNumResults = numResultsVal;
+            exaSubpages = subpagesVal;
+            exaLinks = linksVal;
+            exaImageLinks = imageLinksVal;
+
+            Logger.log(`[MAIN-TRY] ${SCRIPT_NAME} v${SCRIPT_VERSION} starting. Debug mode (from GM): ${debugMode}`);
             if (!exaApiKey) { Logger.log("[MAIN-TRY] Exa API Key not found. Will prompt if search is used."); }
             else { Logger.log("[MAIN-TRY] Exa API Key loaded."); }
+            Logger.log(`[MAIN-TRY] Exa API params loaded: Results=${exaNumResults}, Subpages=${exaSubpages}, Links=${exaLinks}, ImageLinks=${exaImageLinks}`);
 
-            exaNumResults = await GM_getValue(GM_STORAGE_KEYS.EXA_NUM_RESULTS, DEFAULT_EXA_NUM_RESULTS);
-            exaSubpages = await GM_getValue(GM_STORAGE_KEYS.EXA_SUBPAGES, DEFAULT_EXA_SUBPAGES);
-            exaLinks = await GM_getValue(GM_STORAGE_KEYS.EXA_LINKS, DEFAULT_EXA_LINKS);
-            exaImageLinks = await GM_getValue(GM_STORAGE_KEYS.EXA_IMAGE_LINKS, DEFAULT_EXA_IMAGE_LINKS);
-            Logger.log(`[MAIN-TRY] Exa API params loaded.`);
 
             if (typeof unsafeWindow !== 'undefined') {
                 unsafeWindow.t3ChatSearch = unsafeWindow.t3ChatSearch || {};
@@ -722,21 +900,44 @@
                 Logger.log("[MAIN-TRY] unsafeWindow.t3ChatSearch initialized/checked.");
             } else { Logger.warn("[MAIN-TRY] unsafeWindow is undefined."); }
 
-            await MenuCommands.init();
-            StyleManager.injectGlobalStyles();
+            await MenuCommands.init(); // Initialize menu commands (now uses slider modal)
+            StyleManager.injectGlobalStyles(); // Inject styles (includes slider modal styles)
             FetchInterceptor.init();
 
-            const injectionObserverTargetParent = document.querySelector(SELECTORS.justifyDiv)?.parentElement || document.body;
-            const injectionObserver = new MutationObserver(async (mutations, obs) => {
-                const targetContainer = document.querySelector(SELECTORS.mlGroup);
-                if (targetContainer && await UIManager.injectSearchToggle()) { /* UI Toggle Injected */ }
-                else if (!targetContainer) { // Fallback if mlGroup not ready
-                    const justifyDiv = document.querySelector(SELECTORS.justifyDiv);
-                    if (justifyDiv) await UIManager.injectSearchToggle();
+            // Refined logic for injecting the search toggle button
+            async function attemptAndObserveInjection() {
+                if (await UIManager.injectSearchToggle()) {
+                    Logger.log("Search Toggle injected on an attempt (initial or during observation).");
+                    if (unsafeWindow.t3ChatInjectionObs) {
+                        unsafeWindow.t3ChatInjectionObs.disconnect();
+                        Logger.log("Disconnected existing injection observer.");
+                        delete unsafeWindow.t3ChatInjectionObs;
+                    }
+                    return;
                 }
-            });
-            injectionObserver.observe(injectionObserverTargetParent, { childList: true, subtree: true });
-            await UIManager.injectSearchToggle(); // Initial attempt
+
+                if (unsafeWindow.t3ChatInjectionObs) {
+                    Logger.log("Already observing for injection target.");
+                    return; // Already observing
+                }
+
+                const justifyDivElement = document.querySelector(SELECTORS.justifyDiv);
+                const parentToObserve = justifyDivElement || document.body;
+
+                Logger.log(`Search Toggle not injected yet. Setting up MutationObserver on ${justifyDivElement ? 'justifyDiv element' : 'document.body'}.`);
+
+                unsafeWindow.t3ChatInjectionObs = new MutationObserver(async (mutations, obs) => {
+                    Logger.log("Injection observer triggered by DOM mutation.");
+                    if (await UIManager.injectSearchToggle()) {
+                        obs.disconnect();
+                        Logger.log("Search Toggle injected via MutationObserver. Observer disconnected.");
+                        delete unsafeWindow.t3ChatInjectionObs;
+                    }
+                });
+                unsafeWindow.t3ChatInjectionObs.observe(parentToObserve, { childList: true, subtree: true });
+            }
+
+            await attemptAndObserveInjection(); // Initial attempt and setup observer if needed
 
             DOMCorrector.observeChatChanges();
 
